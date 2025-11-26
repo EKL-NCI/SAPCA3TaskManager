@@ -1,0 +1,18 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+
+# Editor-based HTTP Client requests
+/httpRequests/
+
+# Ignore IntelliJ project files
+.idea/
+*.iml
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+.env/
