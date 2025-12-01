@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2 class="mb-4">All Tasks</h2>
+<form action="/add_task" method="POST" class="mb-4">
+    <div class="row g-2">
+        <div class="row g-2">
+            <div class="col-md-4">
+                <input name="title" class="form-control" placeholder="Task title">
+            </div>
+            <div class="col-md-6">
+                <input name="description" class="form-control" placeholder="Task description">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Add Task</button>
+            </div>
+        </div>
+    </div>
+</form>
+<div class="card shadow-sm p-4">
+    <div class="row row-cols-1 row-cols-md-3 g-4">
+        {% for t in tasks %}
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-header text-white" style="background-color: #FFB6C1;">
+                    <strong>{{ t.title }}</strong>
+                </div>
+                <div class="card-body" style="background-color: #FFF0F5;">
+                    <p class="card-text">{{ t.description }}</p>
+                </div>
+                <div class="card-footer d-flex justify-content-between text-white" style="background-color: lightgrey;">
+                    <a href="/edit/{{ t.id }}" class="btn btn-sm btn-warning">Edit</a>
+                    <a href="/delete/{{ t.id }}" class="btn btn-sm btn-danger">Delete</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{% endblock %}

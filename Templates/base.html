@@ -2,21 +2,46 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>{% block title %}Task Manager App{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    {% block title %}
+    <title>Task Manager</title>
+    {% endblock %}
+
+    {% block styles %}
+    <!-- Bootstrap CSS -->
+    {{ bootstrap.load_css() }}
+    <!-- Own CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    {% endblock %}
 </head>
 <body>
-
-<nav>
-    <a href="/">Home</a>
-    <a href="/login">Login</a>
-    <a href="/register">Register</a>
+<nav class="navbar navbar-expand-lg bg-dark" data-bs-theme="dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/">
+            <i class="bi bi-clipboard2-heart-fill fs-3 me-2" style="color: pink;"></i> Task Manager
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarColor02">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarColor02">
+            <ul class="navbar-nav me-auto">
+                <li class="nav-item"><a class="nav-link" href="/">Home</a></li>
+                <li class="nav-item"><a class="nav-link" href="/login">Login</a></li>
+                <li class="nav-item"><a class="nav-link" href="/register">Register</a></li>
+                <li class="nav-item"><a class="nav-link" href="/tasks">My Tasks</a></li>
+                <li class="nav-item"><a class="nav-link" href="/logout">Logout</a></li>
+            </ul>
+        </div>
+    </div>
 </nav>
-
-<div class="container">
-    {% block content %}{% endblock %}
+<div class="container mt-4">
+    {% block content %}
+    {% endblock %}
 </div>
-
+{% block scripts %}
+{{ bootstrap.load_js() }}
+{% endblock %}
 </body>
 </html>
