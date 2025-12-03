@@ -4,6 +4,7 @@
 
 <h2 class="mb-4">All Tasks</h2>
 <form action="/add_task" method="POST" class="mb-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="row g-2">
         <div class="row g-2">
             <div class="col-md-4">

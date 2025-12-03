@@ -6,6 +6,7 @@
         <div class="card-body">
             <h3 class="card-title text-center mb-4">Login</h3>
             <form action="/login" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-3">
                     <label for="username" class="form-label">Username or Email</label>
                     <input type="text" class="form-control" id="username" name="username_or_email" placeholder="Enter Username or Email" required>
