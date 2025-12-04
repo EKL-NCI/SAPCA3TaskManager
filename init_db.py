@@ -1,9 +1,22 @@
 import sqlite3
+from flask import Flask
+from flask_bcrypt import Bcrypt
 
 # Use a different database file for the secure branch
 DATABASE = "secure_db.db"
 
 def init_db():
+    app = Flask(__name__)
+    bcrypt = Bcrypt(app)
+
+    # Admin login credentials
+    ADMIN_USERNAME = 'admin'
+    ADMIN_EMAIL = 'admin@taskmanager.com'
+    ADMIN_PASSWORD = 'admin'
+
+    with app.app_context():
+        admin_pass_hash = bcrypt.generate_password_hash(ADMIN_PASSWORD).decode("utf-8")
+
     # Connect to the database
     connectDb = sqlite3.connect(DATABASE)
     c = connectDb.cursor()
@@ -32,7 +45,6 @@ def init_db():
             description TEXT,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
-            
             FOREIGN KEY (user_id) REFERENCES Users(ID) ON DELETE CASCADE
         );
     """)
@@ -65,6 +77,18 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES Users(ID) ON DELETE SET NULL
         );
     """)
+
+    # Initialize admin user
+    try:
+        c.execute("""
+            INSERT INTO Users (username, email, pass_hash, role, isLocked, failed_login_count)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+                  (ADMIN_USERNAME, ADMIN_EMAIL, admin_pass_hash, 'admin', 0, 0)
+                  )
+        print(f"Admin user '{ADMIN_USERNAME}' initialized with password '{ADMIN_PASSWORD}'.")
+    except sqlite3.IntegrityError:
+        print(f"Admin user '{ADMIN_USERNAME}' already exists.")
 
     connectDb.commit()
     connectDb.close()
