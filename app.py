@@ -12,60 +12,82 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from flask_talisman import Talisman
 from flask_bootstrap import Bootstrap5
 
+# --- Flask App Initialization ---
 app = Flask(__name__)
 bootstrap = Bootstrap5(app)
 bcrypt = Bcrypt(app)
 
+# Secret key for CSRF (Need to change)
 app.config['SECRET_KEY'] = 'your_secret_key'
 
+# Session security config
 app.config.update(
+    # Should be set to true in production
     SESSION_COOKIE_SECURE=False,
+    # Protects against stolen cookies
     SESSION_COOKIE_HTTPONLY=True,
+    # Helps mitigate CSRF
     SESSION_COOKIE_SAMESITE="Lax",
+    # Session Timeout
     PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
 )
 
 DATABASE = "secure_db.db"
-Talisman(app, content_security_policy=None)
+
+# Security headers - protects against XSS (Allow bootstrap)
+Talisman(app, content_security_policy={
+    "default-src": "'self'",
+    "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+})
+
+# Enable CSRF protection
 csrf = CSRFProtect(app)
 
+# Initialize login manager to handle sessions
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
-# Database
+# --- Database ---
+# Creates or returns existing db
 def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(DATABASE)
         g.db.row_factory = sqlite3.Row
     return g.db
 
+# Close database connection after request is completed
 @app.teardown_appcontext
 def close_db(error):
     db = g.pop("db", None)
     if db is not None:
         db.close()
 
+# --- Logging ---
+# Creates folder for logs if not already created
 if not os.path.exists("logs"):
     os.makedirs("logs")
 
-# Logging
+# Creates a secure_app.log if not already created
+# Configure how large files should be and how many should be kept
 file_handler = RotatingFileHandler(
-    "logs/app.log", maxBytes=2_000_000, backupCount=5
+    "logs/secure_app.log", maxBytes=2_000_000, backupCount=5
 )
+
 file_handler.setFormatter(logging.Formatter(
     "%(asctime)s - %(levelname)s - %(message)s"
 ))
+
 file_handler.setLevel(logging.INFO)
 app.logger.addHandler(file_handler)
 app.logger.setLevel(logging.INFO)
 
+# --- User configurations ---
 # User class for flask-login
 class User(UserMixin):
     def __init__(self, id_, username, email):
         self.id = id_
         self.username = username
         self.email = email
-
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -76,7 +98,7 @@ def load_user(user_id):
         return User(row["ID"], row["username"], row["email"])
     return None
 
-# Flask Routes
+# --- Flask Routes ---
 # Basic home route
 @app.route("/")
 def home():
@@ -93,19 +115,23 @@ def login():
         db = get_db()
         user = db.execute("SELECT ID, username, email, pass_hash FROM users ""WHERE username = ? OR email = ?",(identifier, identifier)).fetchone()
 
+        # Validate user credentials using bcrypt
         if user and bcrypt.check_password_hash(user["pass_hash"], password):
             user_obj = User(user["ID"], user["username"], user["email"])
             login_user(user_obj)
 
+            # Log successful login
             app.logger.info(f"Successful login: {user['username']}")
             return redirect(url_for("tasks"))
         else:
+            # Log failed login and flash error
             app.logger.warning(f"Failed login: {identifier}")
             flash("Invalid login credentials", "danger")
 
     return render_template("login.html")
 
 # Logout Route
+# Log out current user and end session
 @app.route("/logout")
 def logout():
     app.logger.info(f"Logged out: {current_user.username}")
@@ -113,6 +139,7 @@ def logout():
     return redirect('/')
 
 # Register Route: Secure
+# User registration with hashed passwords
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -139,6 +166,7 @@ def register():
     return render_template("register.html")
 
 # Tasks Route: Secure
+# Display all tasks for logged in user
 @app.route("/tasks")
 @login_required
 def tasks():
@@ -149,9 +177,8 @@ def tasks():
 
     return render_template("tasks.html", tasks=tasks)
 
-
-# CRUD Functionality
-# CREATE: Add new task
+# --- CRUD Functionality ---
+# CREATE: Add new task for authenticated user
 @app.route("/add_task", methods=["POST"])
 @login_required
 def add_task():
@@ -170,7 +197,7 @@ def add_task():
 
     return redirect(url_for("tasks"))
 
-# EDIT: Allow user to edit existing task
+# EDIT: Allow user to edit existing task belonging to the logged in user
 @app.route("/edit/<id>", methods=["GET", "POST"])
 @login_required
 def edit(id):
@@ -200,7 +227,7 @@ def edit(id):
 
     return render_template("edit.html", task=task)
 
-# DELETE: Allow user to delete existing task
+# DELETE: Allow user to delete existing task belonging to the logged in user
 @app.route("/delete/<id>")
 @login_required
 def delete(id):
