@@ -43,12 +43,14 @@ def login():
         print(f"Login: {username}:{password}")
 
         # Username and password inserted directly rather than using parameterized queries (Vulnerable to SQL Injection)
-        db = get_db()
-        user = db.execute(f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'").fetchone()
+        query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
+        user = get_db().execute(query).fetchone()
 
         if user:
             # No sessions or tokens
             return redirect("/tasks")
+        else:
+            return "Login Failed"
 
     return render_template("login.html")
 
@@ -65,9 +67,8 @@ def register():
         print(f"Register: {username}:{password}")
 
         # Vulnerable to SQL Injection
-        db = get_db()
-        db.execute(f"INSERT INTO users (username, password) VALUES ('{username}', '{password}')")
-        db.commit()
+        query = f"INSERT INTO users (username, password) VALUES ('{username}', '{password}')"
+        get_db().execute(query).fetchone()
 
         return redirect("/login")
     return render_template("register.html")
@@ -75,9 +76,9 @@ def register():
 # Tasks Route: Insecure
 @app.route("/tasks")
 def tasks():
-    db = get_db()
     # Sensitive data exposure vulnerability: any user can see all tasks, no authentication
-    tasks = db.execute("SELECT * FROM tasks").fetchall()
+    query = "SELECT * FROM tasks"
+    tasks = get_db().execute(query).fetchall()
     return render_template("tasks.html", tasks=tasks)
 
 # CRUD Functionality
@@ -89,9 +90,8 @@ def add_task():
     description  = request.form["description"]
 
     # Vulnerable to SQL Injection
-    db = get_db()
-    db.execute(f"INSERT INTO tasks (title, description) VALUES ('{title}', '{description}')")
-    db.commit()
+    query = f"INSERT INTO tasks (title, description) VALUES ('{title}', '{description}')"
+    get_db().execute(query).fetchone()
 
     return redirect("/tasks")
 
@@ -106,25 +106,23 @@ def edit(id):
         new_desc = request.form["description"]
 
         # Vulnerable to SQL Injection
-        db.execute(f"UPDATE tasks SET title='{new_title}', description='{new_desc}' WHERE id={id}")
-        db.commit()
+        query = f"UPDATE tasks SET title='{new_title}', description='{new_desc}' WHERE id={id}"
+        get_db().execute(query).fetchone()
 
         return redirect("/tasks")
 
-    task = db.execute(f"SELECT * FROM tasks WHERE id={id}").fetchone()
+    query = f"SELECT * FROM tasks WHERE id={id}"
+    task = get_db().execute(query).fetchone()
     return render_template("edit.html", task=task)
 
 # DELETE: Allow user to delete existing task
 @app.route("/delete/<id>")
 def delete(id):
-    db = get_db()
-
     # Vulnerable to SQL Injection
-    db.execute(f"DELETE FROM tasks WHERE id={id}")
-    db.commit()
+    query = f"DELETE FROM tasks WHERE id={id}"
+    get_db().execute(query).fetchone()
 
     return redirect("/tasks")
-
 
 if __name__ == "__main__":
     # Use local IP
