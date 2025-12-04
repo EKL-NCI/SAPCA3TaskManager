@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container mt-5">
+    <h2 class="mb-4">Administrator Dashboard</h2>
+    <p class="lead">Manage user accounts and monitor system security logs.</p>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">User Account Management</h4>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Failed Logins</th>
+                        <th style="min-width: 200px;">Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for user in all_users %}
+                    <tr>
+                        <td>{{ user.ID }}</td>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.email }}</td>
+                        <td class="{{ 'fw-bold text-primary' if user.role == 'admin' else 'text-secondary' }}">
+                            {{ user.role.capitalize() }}
+                        </td>
+                        <td>
+                            {% if user.isLocked %}
+                            <span class="badge bg-danger">LOCKED</span>
+                            {% else %}
+                            <span class="badge bg-success">Active</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.failed_login_count }}</td>
+                        <td class="d-flex gap-2">
+                            <!-- Promote action -->
+                            {% if user.role == 'user' %}
+                            <a href="{{ url_for('admin_promote', user_id=user.ID) }}" class="btn btn-sm btn-outline-primary">Promote</a>
+                            {% else %}
+                            <button class="btn btn-sm btn-secondary" disabled>Admin</button>
+                            {% endif %}
+
+                            <!-- Lock/Unlock action -->
+                            {% if user.isLocked %}
+                            <a href="{{ url_for('admin_unlock', user_id=user.ID) }}" class="btn btn-sm btn-success">Unlock</a>
+                            {% else %}
+                            <a href="{{ url_for('admin_lock', user_id=user.ID) }}" class="btn btn-sm btn-warning">Lock</a>
+                            {% endif %}
+
+                            <!-- Delete action -->
+                            {% if user.ID != current_user.id %}
+                            <a href="{{ url_for('admin_delete', user_id=user.ID) }}" class="btn btn-sm btn-danger">Delete</a>
+                            {% else %}
+                            <button class="btn btn-sm btn-secondary" disabled>Self-Delete</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-muted small">Total Users: {{ all_users | length }}</p>
+        </div>
+    </div>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-secondary text-white">
+            <h4 class="mb-0">Security Logs & Monitoring</h4>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                    <thead>
+                    <tr>
+                        <th style="width: 20%;">Timestamp</th>
+                        <th style="width: 10%;">Level</th>
+                        <th>Message</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for log_entry in recent_logs %}
+                    <tr>
+                        <td>{{ log_entry.time }}</td>
+                        <td class="{% if 'CRITICAL' in log_entry.level or 'ERROR' in log_entry.level %}text-danger{% elif 'WARNING' in log_entry.level %}text-warning{% else %}text-info{% endif %} fw-bold">{{ log_entry.level }}</td>
+                        <td>{{ log_entry.message }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
