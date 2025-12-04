@@ -49,8 +49,6 @@ def login():
         if user:
             # No sessions or tokens
             return redirect("/tasks")
-        else:
-            return "Login Failed"
 
     return render_template("login.html")
 
