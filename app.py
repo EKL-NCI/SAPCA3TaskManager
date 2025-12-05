@@ -13,6 +13,7 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from flask_talisman import Talisman
 from flask_bootstrap import Bootstrap5
 from functools import wraps
+from waitress import serve
 
 # --- Flask App Initialization ---
 app = Flask(__name__)
@@ -22,10 +23,17 @@ bcrypt = Bcrypt(app)
 # Secret key for CSRF (Need to change)
 app.config['SECRET_KEY'] = 'your_secret_key'
 
+# Enable CSRF protection
+csrf = CSRFProtect(app)
+
+# Initialize login manager to handle sessions
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+
 # Session security config
 app.config.update(
     # Should be set to true in production
-    SESSION_COOKIE_SECURE=False,
+    SESSION_COOKIE_SECURE=True,
     # Protects against stolen cookies
     SESSION_COOKIE_HTTPONLY=True,
     # Helps mitigate CSRF
@@ -34,23 +42,9 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
 )
 
-DATABASE = "secure_db.db"
-
-# Security headers - protects against XSS (Allow bootstrap)
-Talisman(app, content_security_policy={
-    "default-src": "'self'",
-    "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
-})
-
-# Enable CSRF protection
-csrf = CSRFProtect(app)
-
-# Initialize login manager to handle sessions
-login_manager = LoginManager(app)
-login_manager.login_view = "login"
-
 # --- Database ---
 # Creates or returns existing db
+DATABASE = "secure_db.db"
 def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(DATABASE)
@@ -63,6 +57,21 @@ def close_db(error):
     db = g.pop("db", None)
     if db is not None:
         db.close()
+
+# Security headers - protects against XSS (Allow bootstrap)
+Talisman(app, content_security_policy={
+    "default-src": "'self'",
+    "style-src": ["'self'", "https://cdn.jsdelivr.net"],
+    "frame-ancestors": "'none'",
+    "form-action": "'self'",
+}, force_https=False)
+
+# Fix for zap error
+@app.after_request
+def apply_security_headers(response):
+    # Remove the Server header
+    response.headers.pop('Server', None)
+    return response
 
 # --- Logging ---
 LOG_FILEPATH = "logs/secure_app.log"
@@ -450,4 +459,4 @@ def admin_promote(user_id):
 # Run Application
 if __name__ == "__main__":
     # Use local IP
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    serve(app, host='127.0.0.1', port=5000)
