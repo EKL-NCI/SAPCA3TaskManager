@@ -6,14 +6,13 @@ import bleach
 
 from logging.handlers import RotatingFileHandler
 from datetime import timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, g, abort
+from flask import Flask, render_template, request, redirect, url_for, flash, g, make_response
 from flask_wtf import CSRFProtect
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_talisman import Talisman
 from flask_bootstrap import Bootstrap5
 from functools import wraps
-from waitress import serve
 
 # --- Flask App Initialization ---
 app = Flask(__name__)
@@ -33,7 +32,7 @@ login_manager.login_view = "login"
 # Session security config
 app.config.update(
     # Should be set to true in production
-    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SECURE=False,
     # Protects against stolen cookies
     SESSION_COOKIE_HTTPONLY=True,
     # Helps mitigate CSRF
@@ -58,7 +57,7 @@ def close_db(error):
     if db is not None:
         db.close()
 
-# Security headers - protects against XSS (Allow bootstrap)
+# Security headers - protects against XSS and enforces CSP
 Talisman(app, content_security_policy={
     "default-src": "'self'",
     "style-src": ["'self'", "https://cdn.jsdelivr.net"],
@@ -67,6 +66,7 @@ Talisman(app, content_security_policy={
 }, force_https=False)
 
 # Fix for zap error
+# Enforces additional security headers after each request
 @app.after_request
 def apply_security_headers(response):
     # Remove the Server header
@@ -86,6 +86,7 @@ file_handler = RotatingFileHandler(
     LOG_FILEPATH, maxBytes=2_000_000, backupCount=5
 )
 
+# Set log format
 file_handler.setFormatter(logging.Formatter(
     "%(asctime)s - %(levelname)s - %(message)s"
 ))
@@ -105,11 +106,12 @@ class User(UserMixin):
         self.isLocked = isLocked
         self.failed_login_count = failed_login_count
 
-        @property
-        def is_active(self):
-            # User is only active if account is not locked
-            return not self.isLocked
+    @property
+    def is_active(self):
+        # User is only active if account is not locked
+        return not self.isLocked
 
+# Required function for Flask-Login to load a user from the session cookie
 @login_manager.user_loader
 def load_user(user_id):
     db = get_db()
@@ -130,17 +132,20 @@ def load_user(user_id):
     return None
 
 # Admin Role
+# Custom decorator to restrict access to admin only
 def admin_required(f):
     @wraps(f)
     @login_required
     def decorated_function(*args, **kwargs):
-        if current_user.role == 'admin':
+        if getattr(current_user, "role", None) == "admin":
             return f(*args, **kwargs)
-    
+
         app.logger.warning(f"Unauthorized admin access attempt by User ID: {current_user.id} ({current_user.username})")
-        abort(403)
+        return make_response("Unauthorized: admin access required", 403)
+
     return decorated_function
 
+# Util function to format logs for display in adminDash
 def get_recent_logs(n=20):
     if not os.path.exists(LOG_FILEPATH):
         app.logger.error(f"Log file not found at: {LOG_FILEPATH}")
@@ -188,6 +193,7 @@ def login():
         password = request.form["password"]
 
         db = get_db()
+        # Look up user by either username or email
         user_row = db.execute(
             "SELECT ID, username, email, pass_hash, role, isLocked, failed_login_count "
             "FROM users WHERE username = ? OR email = ?",
@@ -200,11 +206,13 @@ def login():
                 user_row["role"], user_row["isLocked"], user_row["failed_login_count"]
             )
 
+            # Check for locked account
             if user.isLocked:
                 app.logger.warning(f"Failed login: Account {user.username} is locked.")
                 flash("This account has been locked due to too many failed attempts.", "danger")
                 return render_template("login.html")
 
+            # Validate password hash with bcrypt
             if bcrypt.check_password_hash(user_row["pass_hash"], password):
                 db.execute(
                     "UPDATE users SET failed_login_count = 0 WHERE ID = ?",
@@ -216,9 +224,11 @@ def login():
                 app.logger.info(f"Successful login: {user.username}")
                 return redirect(url_for("tasks"))
             else:
+                # Increment failed count and check for lock-out threshold (5 attempts)
                 new_fail_count = user.failed_login_count + 1
 
                 if new_fail_count >= 5:
+                    # Account lock out logic
                     db.execute(
                         "UPDATE users SET failed_login_count = ?, isLocked = 1 WHERE ID = ?",
                         (new_fail_count, user.id)
@@ -226,6 +236,7 @@ def login():
                     app.logger.critical(f"ACCOUNT LOCKED: {user.username} due to 5+ failed attempts.")
                     flash("Invalid credentials. Your account has been locked. Please contact an administrator", "danger")
                 else:
+                    # Increment failed count only
                     db.execute(
                         "UPDATE users SET failed_login_count = ? WHERE ID = ?",
                         (new_fail_count, user.id)
@@ -234,6 +245,7 @@ def login():
                     flash("Invalid login credentials", "danger")
                 db.commit()
         else:
+            # Failed attempt for a user that doesn't exist
             app.logger.warning(f"Failed login attempt for unknown identifier: {identifier}")
             flash("Invalid login credentials", "danger")
 
@@ -259,16 +271,19 @@ def register():
         email = request.form["email"]
         password = request.form["password"]
 
+        # Strong password regex: 8+ chars, 1 uppercase, 1 lowercase, 1 special character
         PASSWORD_REGEX = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\W).{8,}$"
 
         if not re.match(PASSWORD_REGEX, password):
             flash("Password must be at least 8 characters long, include one uppercase letter, one lowercase letter and one special character (e.g., !, @, #).", "danger")
             return render_template("register.html")
 
+        # Hash password using bcrypt before storing
         pass_hash = bcrypt.generate_password_hash(password).decode("utf-8")
 
         db = get_db()
         try:
+            # Insert new user with default role 'user' and unlocked status
             db.execute(
                 "INSERT INTO users (username, email, pass_hash, role, isLocked, failed_login_count) VALUES (?, ?, ?, ?, ?, ?)",
                 (username, email, pass_hash, 'user', 0, 0)
@@ -279,6 +294,7 @@ def register():
             return redirect(url_for("login"))
 
         except sqlite3.IntegrityError:
+            # Handles duplicate username or email violation
             flash("That username or email is already in use.", "danger")
 
     return render_template("register.html")
@@ -289,6 +305,7 @@ def register():
 @login_required
 def tasks():
     db = get_db()
+    # Fetch current users tasks
     tasks = db.execute(
         "SELECT * FROM tasks WHERE user_id = ?", (current_user.id,)
     ).fetchall()
@@ -300,6 +317,7 @@ def tasks():
 @app.route("/add_task", methods=["POST"])
 @login_required
 def add_task():
+    # Sanitize user input using bleach to prevent XSS
     title = bleach.clean(request.form["title"])
     description = bleach.clean(request.form["description"])
 
@@ -308,6 +326,7 @@ def add_task():
         return redirect(url_for("tasks"))
 
     db = get_db()
+    # Associate the new task with the current authenticated user
     db.execute(
         "INSERT INTO tasks (user_id, title, description, created_at, updated_at) "
         "VALUES (?, ?, ?, datetime('now'), datetime('now'))",
@@ -326,6 +345,7 @@ def edit(id):
     db = get_db()
 
     if request.method == "POST":
+        # Sanitize user input
         title = bleach.clean(request.form["title"])
         description = bleach.clean(request.form["description"])
 
@@ -333,6 +353,7 @@ def edit(id):
             flash("Task title cannot be empty.", "warning")
             return redirect(url_for("edit", id=id))
 
+        # Users can only edit their own tasks
         db.execute(
             "UPDATE tasks SET title=?, description=?, updated_at=datetime('now') "
             "WHERE id=? AND user_id=?",
@@ -360,6 +381,7 @@ def edit(id):
 def delete(id):
     db = get_db()
 
+    # Ensure user can only delete their own tasks
     cursor = db.execute(
         "DELETE FROM tasks WHERE id=? AND user_id=?",
         (id, current_user.id)
@@ -368,18 +390,20 @@ def delete(id):
 
     if cursor.rowcount == 0:
         app.logger.warning(f"Unauthorized task deletion attempt on task ID {id} by {current_user.username}")
-        return "Not authorized or task doesn't exist.", 403
+        return make_response("Unauthorized: task not found or you don't have permission", 403)
 
     app.logger.info(f"Task deleted (ID {id}) by {current_user.username}")
 
+    flash("Task deleted successfully.", "success")
     return redirect(url_for("tasks"))
 
 # --- Administrator ---
 @app.route("/adminDash")
-@admin_required
+@admin_required # Only grant access to admins
 def adminDashboard():
     db = get_db()
 
+    # Fetch all user data
     all_users = db.execute(
         """
         SELECT ID, username, email, isLocked, failed_login_count, role
@@ -387,13 +411,16 @@ def adminDashboard():
         """
     ).fetchall()
 
+    # Fetch recent logs
     recent_logs = get_recent_logs(n=20)
 
     return render_template("adminDash.html", all_users = all_users, recent_logs = recent_logs)
 
 @app.route("/admin/lock/<int:user_id>")
 @admin_required
+# Allow admins to lock user accounts
 def admin_lock(user_id):
+    # Prevent admin from locking their own account
     if user_id == current_user.id:
         flash("Cannot lock your own account!", "warning")
         return redirect(url_for("adminDashboard"))
@@ -407,8 +434,10 @@ def admin_lock(user_id):
 
 @app.route("/admin/unlock/<int:user_id>")
 @admin_required
+# Allow admins to unlock user accounts
 def admin_unlock(user_id):
     db = get_db()
+    # Unlock and reset failed_login_count
     db.execute("UPDATE users SET isLocked = 0, failed_login_count = 0 WHERE ID = ?", (user_id,))
     db.commit()
     app.logger.info(f"Admin {current_user.username} unlocked and reset failed count for User ID: {user_id}")
@@ -417,7 +446,9 @@ def admin_unlock(user_id):
 
 @app.route("/admin/delete/<int:user_id>")
 @admin_required
+# Allow admins to delete user accounts
 def admin_delete(user_id):
+    # Prevent admin from deleting their own account
     if user_id == current_user.id:
         flash("Cannot delete your own account!", "danger")
         return redirect(url_for("adminDashboard"))
@@ -436,6 +467,7 @@ def admin_delete(user_id):
 
 @app.route("/admin/promote/<int:user_id>")
 @admin_required
+# Allow admins to promote other users to admin
 def admin_promote(user_id):
     if user_id == current_user.id:
         flash("You are already an admin!", "warning")
@@ -448,6 +480,7 @@ def admin_promote(user_id):
         flash(f"User ID {user_id} is already an admin.", "info")
         return redirect(url_for("adminDashboard"))
 
+    # Promote user role
     db.execute("UPDATE users SET role = 'admin' WHERE ID = ?", (user_id,))
     db.commit()
 
@@ -459,4 +492,4 @@ def admin_promote(user_id):
 # Run Application
 if __name__ == "__main__":
     # Use local IP
-    serve(app, host='127.0.0.1', port=5000)
+    app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)

@@ -14,8 +14,13 @@ def init_db():
     ADMIN_EMAIL = 'admin@taskmanager.com'
     ADMIN_PASSWORD = 'admin'
 
+    TEST_USERNAME = 'testUser'
+    TEST_EMAIL = 'testuser@test.com'
+    TEST_PASSWORD = 'Test1234*'
+
     with app.app_context():
         admin_pass_hash = bcrypt.generate_password_hash(ADMIN_PASSWORD).decode("utf-8")
+        test_user_hash = bcrypt.generate_password_hash(TEST_PASSWORD).decode("utf-8")
 
     # Connect to the database
     connectDb = sqlite3.connect(DATABASE)
@@ -78,17 +83,25 @@ def init_db():
         );
     """)
 
-    # Initialize admin user
+    # Insert default admin
     try:
         c.execute("""
             INSERT INTO Users (username, email, pass_hash, role, isLocked, failed_login_count)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-                  (ADMIN_USERNAME, ADMIN_EMAIL, admin_pass_hash, 'admin', 0, 0)
-                  )
-        print(f"Admin user '{ADMIN_USERNAME}' initialized with password '{ADMIN_PASSWORD}'.")
+            VALUES (?, ?, ?, ?, 0, 0)
+        """, (ADMIN_USERNAME, ADMIN_EMAIL, admin_pass_hash, "admin"))
+        print("Default admin created.")
     except sqlite3.IntegrityError:
-        print(f"Admin user '{ADMIN_USERNAME}' already exists.")
+        print("Default admin already exists.")
+
+    # Insert test user
+    try:
+        c.execute("""
+            INSERT INTO Users (username, email, pass_hash, role, isLocked, failed_login_count)
+            VALUES (?, ?, ?, 'user', 0, 0)
+        """, (TEST_USERNAME, TEST_EMAIL, test_user_hash))
+        print("Test user created")
+    except sqlite3.IntegrityError:
+        print("Test user already exists.")
 
     connectDb.commit()
     connectDb.close()
